@@ -1,8 +1,8 @@
 import asyncio
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
-
-TOKEN = "8296395464:AAHx7_EYV0FqFSfbEv4XLdzk-KUl7sT4vcs"
+import os
+TOKEN = os.getenv("TOKEN")
 
 # ─────────────────────────────────────────────
 #  LISTA DE AUTORIZADAS — SG-SST-PL-04 5.3
