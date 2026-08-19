@@ -1,8 +1,42 @@
 import asyncio
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
 import os
-TOKEN = os.getenv("TOKEN")
+import logging
+from telegram import ReplyKeyboardMarkup, Update
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
+
+# SEGURIDAD: nunca escribas el token directamente en este archivo.
+# Revoca en BotFather el token que aparecía en la versión anterior y genera uno nuevo.
+# Instala la dependencia: pip install "python-telegram-bot>=20,<23"
+# Antes de ejecutar:
+# Windows PowerShell:  $env:TELEGRAM_BOT_TOKEN="TOKEN_NUEVO"
+# Linux/macOS:         export TELEGRAM_BOT_TOKEN="TOKEN_NUEVO"
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+)
+
+# Este número debe ser confirmado formalmente por la institución antes de usarlo.
+CENTRO_SALUD = os.getenv("CENTRO_SALUD_TELEFONO", "").strip()
+
+TECLADO = ReplyKeyboardMarkup(
+    [
+        ["🔥 Incendio", "🌍 Sismo"],
+        ["⛈️ Tormenta", "🌧️ Inundación"],
+        ["🦠 Riesgo biológico", "🔒 Intrusión"],
+        ["🗺️ Rutas", "📍 Punto de encuentro"],
+        ["📞 Contactos", "👥 Brigada"],
+    ],
+    resize_keyboard=True,
+    one_time_keyboard=False,
+)
 
 # ─────────────────────────────────────────────
 #  LISTA DE AUTORIZADAS — SG-SST-PL-04 5.3
@@ -27,6 +61,12 @@ DOCENTES_AUTORIZADAS = {
 
 def autorizada(user_id):
     return user_id in DOCENTES_AUTORIZADAS
+
+def contacto_salud():
+    """Muestra el número local solo cuando fue validado y configurado."""
+    if CENTRO_SALUD:
+        return f"🏥 Centro de Salud validado: *{CENTRO_SALUD}*\n"
+    return "🏥 Centro de Salud: *pendiente de validación institucional*\n"
 
 async def acceso_denegado(update):
     await update.message.reply_text("⛔ No tienes acceso. Comunícate con coordinación.")
@@ -53,6 +93,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/incendio — PON Incendio\n"
         "/sismo — PON Sismo\n"
         "/tormenta — PON Tormenta eléctrica / Descarga\n"
+        "/inundacion — PON Inundación\n"
         "/biologico — PON Riesgo biológico / Pandemia\n"
         "/hurto — PON Hurto / Amenaza de seguridad\n\n"
         "🩺 *Primeros auxilios:*\n"
@@ -61,9 +102,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🟣 *Evacuación:*\n"
         "/rutas — Rutas de evacuación\n"
         "/punto\\_encuentro — Punto de encuentro (PMU)\n"
-        "/extintor — Técnica JALE para extintor"
+        "/extintor — Técnica JALE para extintor\n\n"
+        "⚠️ *En una emergencia real:* activa la alarma, llama al *123* "
+        "y sigue las instrucciones del Director del Plan o la Coordinadora de Emergencias. "
+        "El bot es una guía y no reemplaza a los organismos de socorro."
     )
-    await update.message.reply_text(mensaje, parse_mode="Markdown")
+    await update.message.reply_text(
+        mensaje,
+        parse_mode="Markdown",
+        reply_markup=TECLADO,
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  /emergencias
@@ -84,15 +132,16 @@ async def emergencias(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "4️⃣ *PROTEGE A LOS NIÑOS PRIMERO*\n"
         "Agrúpalos. Nunca los dejes solos.\n\n"
         "5️⃣ *APLICA EL PON CORRESPONDIENTE*\n"
-        "/incendio | /sismo | /tormenta | /biologico | /hurto\n\n"
+        "/incendio | /sismo | /tormenta | /inundacion | /biologico | /hurto\n\n"
         "6️⃣ *EVACÚA SI SE ORDENA*\n"
         "Sigue las /rutas hacia el /punto\\_encuentro.\n"
         "Cuenta niños antes de salir y al llegar.\n\n"
         "7️⃣ *ESPERA AUTORIZACIÓN PARA REINGRESAR*\n"
-        "Nadie regresa sin orden del Comité de Emergencias.\n\n"
+        "Nadie regresa sin autorización del Director del Plan.\n\n"
         "8️⃣ *POST-EMERGENCIA*\n"
-        "Reporta a la ARL en menos de 24 horas.\n"
-        "Elabora informe del evento. Repone elementos en menos de 48 horas.\n\n"
+        "Elabora el informe institucional. El responsable del SG-SST determinará "
+        "si corresponde reportar el evento a la ARL.\n"
+        "Repone los elementos de emergencia utilizados antes de 48 horas.\n\n"
         "📞 Emergencias general: *123*\n"
         "🚒 Bomberos Tibasosa: *3053123903*"
     )
@@ -144,10 +193,10 @@ async def contactos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👮 Policía Nacional: *112*\n"
         "🏥 Cruz Roja Colombiana: *3133007105*\n"
         "🛡️ Defensa Civil: *3112620844*\n"
-        "🏨 Hospital / Centro de Salud: *3105591538*\n"
+        f"{contacto_salud()}"
         "📋 ARL (reportar accidentes): *018000511414*\n\n"
         "📌 _Guarda estos números en tu celular personal._\n"
-        "_El reporte a la ARL debe hacerse en máximo 24 horas tras el evento._"
+        "_El responsable del SG-SST define si corresponde realizar el reporte a la ARL._"
     )
     await update.message.reply_text(mensaje, parse_mode="Markdown")
 
@@ -177,8 +226,9 @@ async def brigada(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Laura Carolina Olmos Pulido\n"
         "• Nidia Paola Fonseca Vargas\n\n"
         "📅 Última capacitación: 30 de mayo de 2026\n\n"
-        "⚠️ En ausencia de un rol, el superior inmediato asume sus funciones.\n"
-        "Simulacros mínimo 1 vez al año (decreto 1072 de 2015)."
+        "⚠️ En ausencia de un responsable, comunícate con el Director del Plan "
+        "o la Coordinadora de Emergencias y sigue la cadena institucional.\n"
+        "Simulacros: mínimo una vez al año, según el plan institucional."
     )
     await update.message.reply_text(mensaje, parse_mode="Markdown")
 
@@ -192,10 +242,10 @@ async def cadena(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📣 *CADENA DE LLAMADAS Y ACTIVACIÓN*\n"
         "_SG-SST-PL-04 4.2 — Reporte, evaluación y activación_\n\n"
         "━━━━ FASE 1: ALERTA ━━━━\n\n"
-        "1. Quien detecta la emergencia avisa de inmediato al *Director del Plan* "
-        "y al *Jefe de Brigada*.\n"
-        "2. Ellos activan la cadena de llamadas al resto del Comité.\n"
-        "3. El Comité se reúne en el *Punto de Encuentro* (PMU).\n"
+        "1. Quien detecta la emergencia avisa de inmediato a la "
+        "*Coordinadora de Emergencias* o al *Director del Plan*.\n"
+        "2. Se activa la cadena de llamadas al Comité y a la brigada.\n"
+        "3. El Comité se reúne en el PMU definido en un lugar seguro.\n"
         "4. Se verifica: veracidad, naturaleza, magnitud y vulnerabilidad.\n\n"
         "━━━━ DECISIONES DEL COMITÉ ━━━━\n\n"
         "• Volver a la normalidad y hacer seguimiento.\n"
@@ -238,7 +288,7 @@ async def incendio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Bomberos asumen el control. La brigada apoya.\n"
         "Nadie retorna hasta autorización oficial.\n\n"
         "📋 *Post-emergencia (Comité):*\n"
-        "Evalúa daños. Notifica ARL en máx 24 h.\n"
+        "Evalúa daños. El responsable del SG-SST determina si corresponde notificar a la ARL.\n"
         "Elabora informe. Recarga extintores en máx 48 h.\n\n"
         "📞 Bomberos Tibasosa: *3053123903* | NUSE: *123*"
     )
@@ -254,7 +304,7 @@ async def sismo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🌍 *PON — SISMO*\n"
         "_SG-SST-PL-04 4.1.2_\n\n"
         "⚡ *Durante el movimiento (Todo el personal):*\n"
-        "AGÁCHATE — CÚBRETE — SUJÉTATE\n"
+        "AGÁCHATE — CÚBRETE — AGÁRRATE\n"
         "Protege cabeza y cuello bajo escritorios o junto a columnas.\n"
         "Aléjate de ventanas, estantes y zonas de vidrio.\n"
         "❌ No intentes evacuar durante el sismo.\n\n"
@@ -262,8 +312,9 @@ async def sismo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Calma al grupo. Verifica heridos.\n"
         "No muevas lesionados graves.\n"
         "Evalúa daños estructurales visibles.\n"
-        "Activa evacuación solo si el Coordinador lo indica.\n\n"
-        "🚶 *Evacuación (si hay daño estructural):*\n"
+        "Evacúa después de finalizar el movimiento y solo cuando el Coordinador lo indique.\n\n"
+        "🚶 *Evacuación (por orden del Coordinador):*\n"
+        "Evacúa ante daños, obstáculos u otras condiciones que hagan insegura la permanencia.\n"
         "Usa rutas alternas si la principal está bloqueada → /rutas\n"
         "Desconecta gas y electricidad si es seguro hacerlo.\n\n"
         "📍 *En el punto de encuentro (PMU):*\n"
@@ -297,13 +348,40 @@ async def tormenta(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⚡ *Si hay víctima por descarga eléctrica (Brigada Primeros Auxilios):*\n"
         "1. NO la toques sin cortar primero la electricidad.\n"
         "2. Corta el suministro eléctrico del área.\n"
-        "3. Llama al hospital: *3105591538* o NUSE: *123*\n"
-        "4. Si no respira y no hay pulso: inicia RCP.\n"
+        "3. Llama al NUSE: *123*.\n"
+        "4. Si no respira, una persona capacitada debe iniciar RCP y seguir "
+        "las instrucciones del servicio de emergencias.\n"
         "5. Mantenla abrigada y tranquila.\n\n"
         "📋 *Post-evento (Coordinador):*\n"
         "Inspecciona instalaciones eléctricas antes de reconectar.\n"
         "Reporta daños a mantenimiento. Elabora informe.\n\n"
-        "📞 Hospital / Centro de Salud: *3105591538* | NUSE: *123*"
+        "📞 NUSE: *123*\n"
+        f"{contacto_salud()}"
+    )
+    await update.message.reply_text(mensaje, parse_mode="Markdown")
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  /inundacion — Amenaza identificada en SG-SST-DC-01
+# ─────────────────────────────────────────────────────────────────────────────
+async def inundacion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not autorizada(update.effective_user.id):
+        await acceso_denegado(update); return
+    mensaje = (
+        "🌧️ *PROTOCOLO — INUNDACIÓN*\n"
+        "_SG-SST-DC-01 y SG-SST-PL-04_\n\n"
+        "⚠️ *Prevención y alerta:*\n"
+        "• Vigila la acumulación de agua y el estado de drenajes y canaletas.\n"
+        "• Mantén despejadas las salidas y los recorridos de evacuación.\n"
+        "• Informa de inmediato a la Coordinadora de Emergencias.\n"
+        "• Mantén a los niños alejados de zonas inundadas y conexiones eléctricas.\n\n"
+        "🚶 *Si se ordena evacuar:*\n"
+        "• Evacúa primero las aulas o zonas bajas.\n"
+        "• Sigue la ruta que indique la Coordinadora de Evacuación.\n"
+        "• No uses la cancha si está inundada o comprometida.\n"
+        "• Dirígete al punto alterno indicado y verifica la lista de asistencia.\n\n"
+        "❌ No atravieses corrientes ni acumulaciones de agua.\n"
+        "❌ No regreses hasta que el Director del Plan lo autorice.\n\n"
+        "🆘 Emergencias: *123*"
     )
     await update.message.reply_text(mensaje, parse_mode="Markdown")
 
@@ -331,8 +409,8 @@ async def biologico(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Evalúa suspensión de actividades presenciales.\n"
         "• Desinfecta instalaciones.\n"
         "• Coordina con la Secretaría de Salud Municipal.\n\n"
-        "📞 Hospital / Centro de Salud: *3105591538*\n"
-        "🆘 NUSE: *123*"
+        "🆘 NUSE: *123*\n"
+        f"{contacto_salud()}"
     )
     await update.message.reply_text(mensaje, parse_mode="Markdown")
 
@@ -370,29 +448,22 @@ async def primeros_auxilios(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not autorizada(update.effective_user.id):
         await acceso_denegado(update); return
     mensaje = (
-        "🩺 *PRIMEROS AUXILIOS BÁSICOS*\n\n"
-        "🩸 *Herida con sangrado:*\n"
-        "• Presiona con paño limpio de forma sostenida.\n"
-        "• No retires el paño; agrega otro encima si se empapa.\n"
-        "• Eleva la zona. Si no para en 5 min → 3105591538.\n\n"
-        "🔥 *Quemadura leve:*\n"
-        "• Agua fría (no helada) durante 10-15 minutos.\n"
-        "• No apliques pasta dental ni cremas caseras.\n"
-        "• Si es grande o profunda → 3105591538 de inmediato.\n\n"
-        "🤕 *Golpe en la cabeza:*\n"
-        "• Sienta al niño y obsérvalo.\n"
-        "• Vómito, pérdida de conciencia o llanto excesivo → 3105591538.\n"
-        "• Hielo envuelto en tela, nunca directo.\n"
-        "• Avisa siempre a los acudientes.\n\n"
-        "😮 *Niño que se atraganta:*\n"
-        "• Si puede toser → anímalo a seguir tosiendo.\n"
-        "• Si no puede respirar → maniobra de Heimlich + llama al 123.\n\n"
-        "😵 *Inconsciente:*\n"
-        "• Llámalo por su nombre. Si no responde → 123.\n"
-        "• No lo muevas si sospechas golpe en cabeza o cuello.\n\n"
-        "⚡ *Descarga eléctrica* → /tormenta\n"
-        "⚠️ *Convulsión* → /convulsion\n\n"
-        "📞 Hospital / Centro de Salud: *3105591538* | NUSE: *123*"
+        "🩺 *PRIMEROS AUXILIOS — ORIENTACIÓN INICIAL*\n\n"
+        "⚠️ Esta guía no reemplaza la atención médica. La intervención debe ser "
+        "realizada por una persona capacitada y con elementos de bioseguridad.\n\n"
+        "1. Verifica que el lugar sea seguro antes de acercarte.\n"
+        "2. Activa la brigada de primeros auxilios.\n"
+        "3. Si la persona no responde, no respira normalmente, presenta sangrado "
+        "abundante, dificultad respiratoria, quemadura grave o lesión importante, llama al *123*.\n"
+        "4. No muevas a una persona con posible lesión de cabeza, cuello o columna, "
+        "salvo que permanezca expuesta a un peligro mayor.\n"
+        "5. No suministres medicamentos, alimentos ni bebidas.\n"
+        "6. Acompaña a la persona y sigue las instrucciones del servicio de emergencias.\n"
+        "7. Informa a coordinación y al acudiente cuando corresponda.\n\n"
+        "⚡ Descarga eléctrica → /tormenta\n"
+        "🧠 Convulsión → /convulsion\n\n"
+        "🆘 NUSE: *123*\n"
+        f"{contacto_salud()}"
     )
     await update.message.reply_text(mensaje, parse_mode="Markdown")
 
@@ -403,27 +474,22 @@ async def convulsion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not autorizada(update.effective_user.id):
         await acceso_denegado(update); return
     mensaje = (
-        "🧠 *QUÉ HACER SI UN NIÑO CONVULSIONA*\n\n"
-        "⏱️ *Mira el reloj al inicio. El tiempo importa.*\n\n"
-        "✅ *SÍ debes hacer:*\n\n"
-        "1. Llama al 3105591538 si dura más de 5 minutos o es la primera vez.\n"
-        "2. Baja al niño al suelo con cuidado.\n"
-        "3. Ponlo de lado para que no se ahogue con saliva.\n"
-        "4. Aleja objetos duros a su alrededor.\n"
-        "5. Protege su cabeza con tu mano o una chaqueta doblada.\n"
-        "6. Afloja ropa ajustada en el cuello.\n"
-        "7. Quédate a su lado: _'Estoy aquí, ya pasa.'_\n"
-        "8. Al terminar, ponlo de lado y espera que despierte.\n"
-        "9. Anota: duración, movimientos, color de piel.\n\n"
-        "🚫 *NO debes hacer:*\n\n"
-        "• No sujetes ni intentes detener los movimientos\n"
-        "• No metas nada en su boca\n"
-        "• No le des agua ni comida\n"
-        "• No lo dejes solo\n"
-        "• No te asustes en voz alta frente a otros niños\n\n"
-        "👦 *Después:* Puede estar confuso o dormido. Es normal.\n"
-        "Avisa a coordinación y a los acudientes.\n\n"
-        "📞 Hospital / Centro de Salud: *3105591538* | NUSE: *123*"
+        "🧠 *QUÉ HACER ANTE UNA CONVULSIÓN*\n\n"
+        "⏱️ Registra la hora de inicio y protege al niño de lesiones.\n\n"
+        "✅ *Acciones iniciales:*\n"
+        "• Retira objetos cercanos y protege la cabeza con algo blando.\n"
+        "• Afloja la ropa ajustada alrededor del cuello.\n"
+        "• Cuando sea posible y sin forzarlo, colócalo de lado.\n"
+        "• Permanece a su lado, activa la brigada y avisa a coordinación.\n"
+        "• Llama al *123* si dura cinco minutos o más, se repite, es la primera "
+        "convulsión conocida, existe lesión, dificultad para respirar o no recupera la conciencia.\n\n"
+        "🚫 *No debes:*\n"
+        "• Sujetar o intentar detener los movimientos.\n"
+        "• Introducir objetos, dedos, alimentos o líquidos en la boca.\n"
+        "• Dejar al niño solo.\n\n"
+        "Después, informa al acudiente y registra la duración y las características observadas.\n\n"
+        "🆘 NUSE: *123*\n"
+        f"{contacto_salud()}"
     )
     await update.message.reply_text(mensaje, parse_mode="Markdown")
 
@@ -436,20 +502,22 @@ async def rutas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mensaje = (
         "🗺️ *RUTAS DE EVACUACIÓN*\n"
         "_SG-SST-PL-04 4.6 — Ver también Anexo 7: Plano de evacuación_\n\n"
-        "Sigue las señales y flechas verdes de evacuación en las paredes.\n\n"
-        "🚪 *Salida principal:*\n"
-        "[Completa con la ruta real del jardín]\n\n"
-        "🚪 *Salida secundaria:*\n"
-        "[Completa con la ruta real del jardín]\n\n"
-        "🚪 *Salida de emergencia:*\n"
-        "[Completa con la ruta real del jardín]\n\n"
+        "⚠️ La documentación registra señalización parcial. Sigue la orientación "
+        "de la Coordinadora de Evacuación y el plano institucional vigente.\n\n"
+        "🚪 *Recorrido principal:*\n"
+        "Desplázate desde el aula por el recorrido señalado hacia la cancha, "
+        "solo si la ruta fue verificada como segura.\n\n"
+        "🚪 *Alternativas:*\n"
+        "• Costado lateral derecho del patio.\n"
+        "• Puerta principal de la institución.\n"
+        "La Coordinadora define la alternativa según la zona afectada.\n\n"
         "🚶 *Durante la evacuación:*\n"
         "• Camina, no corras. Niños en fila.\n"
         "• Cuenta antes de salir y al llegar al punto.\n"
         "• Cierra puertas al salir (sin llave).\n"
         "• Asiste a niños con movilidad reducida.\n"
         "• Si una ruta está bloqueada, usa la alterna.\n\n"
-        "⏱️ El tiempo máximo de preparación para salir es 40 segundos.\n\n"
+        "⏱️ El objetivo institucional de evacuación total es de 3 minutos o menos.\n\n"
         "📍 Al salir → /punto\\_encuentro"
     )
     await update.message.reply_text(mensaje, parse_mode="Markdown")
@@ -461,21 +529,25 @@ async def punto_encuentro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not autorizada(update.effective_user.id):
         await acceso_denegado(update); return
     mensaje = (
-        "📍 *PUNTO DE ENCUENTRO — PMU*\n"
-        "_SG-SST-PL-04 4.6.1 — Puesto de Mando Unificado_\n\n"
+        "📍 *PUNTOS DE ENCUENTRO*\n"
+        "_SG-SST-PL-04 — Aspectos de la evacuación_\n\n"
         "🏁 *Punto principal:*\n"
-        "[Completa con la ubicación exacta del jardín]\n\n"
-        "🏁 *Punto alternativo:*\n"
-        "[Completa con la ubicación alternativa]\n\n"
+        "Cancha ubicada al lado de la infraestructura de la institución.\n\n"
+        "🏁 *Punto alterno 1:*\n"
+        "Salida por el costado lateral derecho del patio.\n\n"
+        "🏁 *Punto alterno 2:*\n"
+        "Puerta principal de la institución.\n\n"
+        "La Coordinadora de Emergencias define el punto seguro. El PMU puede "
+        "ubicarse en el punto de encuentro únicamente cuando el lugar no esté comprometido.\n\n"
         "✅ *Al llegar:*\n"
         "1. Cuenta a TODOS los niños — verifica con lista de asistencia.\n"
         "2. Repórtate con el Director del Plan o Coordinadora de Emergencias.\n"
         "3. Mantén a los niños sentados y tranquilos.\n"
         "4. No permitas que ningún niño se aleje del grupo.\n"
         "5. Espera instrucciones del Comité de Emergencias.\n"
-        "6. *No regreses al edificio* sin autorización oficial.\n\n"
+        "6. *No regreses al edificio* sin autorización del Director del Plan.\n\n"
         "⚠️ Si falta un niño, avisa de inmediato al Jefe de Brigada.\n"
-        "El Comité autoriza el reingreso solo tras inspección estructural.\n\n"
+        "El Director del Plan autoriza el reingreso después de verificar condiciones seguras.\n\n"
         "📞 Bomberos Tibasosa: *3053123903* | NUSE: *123*"
     )
     await update.message.reply_text(mensaje, parse_mode="Markdown")
@@ -500,16 +572,67 @@ async def extintor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "↔️ *E — En abanico, mueve de lado a lado*\n\n"
         "⚠️ El extintor dura solo 8 a 30 segundos.\n"
         "Si el fuego no cede → retírate y evacúa de inmediato.\n\n"
-        "📍 Extintores tipo ABC ubicados en:\n"
-        "[Completa con la ubicación real en el jardín]\n\n"
+        "📍 *Inventario documentado:* un extintor tipo ABC ubicado en Rectoría.\n"
+        "⚠️ El plan registra cinco unidades requeridas; confirma en campo la cantidad, "
+        "ubicación, señalización y vigencia antes de intervenir.\n\n"
         "📞 Bomberos Tibasosa: *3053123903*"
     )
     await update.message.reply_text(mensaje, parse_mode="Markdown")
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  Consultas en lenguaje natural y botones
+# ─────────────────────────────────────────────────────────────────────────────
+async def consulta_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not autorizada(update.effective_user.id):
+        await acceso_denegado(update); return
+
+    texto = (update.message.text or "").lower().strip()
+    intenciones = [
+        (("fuego", "humo", "incendio", "🔥"), incendio),
+        (("temblor", "temblando", "sismo", "tiembla", "🌍"), sismo),
+        (("tormenta", "trueno", "rayo", "descarga", "⛈"), tormenta),
+        (("inund", "mucha agua", "lluvia intensa", "🌧"), inundacion),
+        (("biológico", "biologico", "pandemia", "síntomas", "sintomas", "🦠"), biologico),
+        (("intruso", "intrusión", "intrusion", "hurto", "persona extraña", "🔒"), hurto),
+        (("ruta", "salida", "evacuar", "🗺"), rutas),
+        (("punto de encuentro", "cancha", "reunión", "reunion", "📍"), punto_encuentro),
+        (("contacto", "teléfono", "telefono", "llamar", "📞"), contactos),
+        (("brigada", "brigadista", "responsable", "👥"), brigada),
+        (("extintor", "jale", "🧯"), extintor),
+        (("primeros auxilios", "herido", "lesionado"), primeros_auxilios),
+        (("convuls",), convulsion),
+    ]
+
+    for palabras, funcion in intenciones:
+        if any(palabra in texto for palabra in palabras):
+            await funcion(update, context)
+            return
+
+    await update.message.reply_text(
+        "No pude identificar la consulta. Selecciona una opción del menú o escribe, "
+        "por ejemplo: *hay humo*, *está temblando*, *hay una inundación* o "
+        "*cuál es el punto de encuentro*.\n\n"
+        "Si existe peligro inmediato, activa la alarma y llama al *123*.",
+        parse_mode="Markdown",
+        reply_markup=TECLADO,
+    )
+
+async def comando_desconocido(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not autorizada(update.effective_user.id):
+        await acceso_denegado(update); return
+    await update.message.reply_text(
+        "Ese comando no está registrado. Usa /start para consultar el menú.",
+        reply_markup=TECLADO,
+    )
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  Arranque del bot
 # ─────────────────────────────────────────────────────────────────────────────
 async def run():
+    if not TOKEN:
+        raise RuntimeError(
+            "Falta TELEGRAM_BOT_TOKEN. Configura un token nuevo en una variable de entorno."
+        )
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start",             start))
@@ -522,6 +645,7 @@ async def run():
     app.add_handler(CommandHandler("incendio",          incendio))
     app.add_handler(CommandHandler("sismo",             sismo))
     app.add_handler(CommandHandler("tormenta",          tormenta))
+    app.add_handler(CommandHandler("inundacion",        inundacion))
     app.add_handler(CommandHandler("biologico",         biologico))
     app.add_handler(CommandHandler("hurto",             hurto))
     # Primeros auxilios
@@ -531,6 +655,8 @@ async def run():
     app.add_handler(CommandHandler("rutas",             rutas))
     app.add_handler(CommandHandler("punto_encuentro",   punto_encuentro))
     app.add_handler(CommandHandler("extintor",          extintor))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, consulta_texto))
+    app.add_handler(MessageHandler(filters.COMMAND, comando_desconocido))
 
     print("Bot Plan de Emergencias — Mi Mundo Mágico funcionando... (Ctrl+C para detener)")
     await app.initialize()
